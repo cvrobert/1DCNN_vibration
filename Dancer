@@ -1,0 +1,160 @@
+//3456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+/////////////////////////////////////////////////////////////////////////////////////////
+// Name: BBN_DNCR_Cntrl00 Ver1.03 ///////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+// Dancer Control Calculating
+// Ver 1.00 Ichiro Hatanaka 2019.11.18
+// ver 1.03 Ichiro Hatanaka 2020.01.03
+
+// Preparetion Get Scantime of tihs Program /////////////////////////////////////////////
+
+scanTime.EnableIn := 1;
+ScanTime0(scanTime);
+//f_ScnT := scanTime.f_ScanT;
+f_ScnT := scanTime.f_ScanT; //20191219 oshida editted
+
+// Preparation Make Diameter Data ///////////////////////////////////////////////////////
+
+f_DiaMax2 := f_DiaMax + 10;
+f_DiaMin2 := f_DiaMin -70;
+if (f_DiaMax2 < 10 ) then f_DiaMin2 := 10; end_if;
+
+if (b_is_TU ) then
+	f_DiaSync := f_DiaMin;
+else
+	f_DiaSync := 2*(f_DiaMax2 * f_DiaMin2) / (f_DiaMax2 + f_DiaMin2);
+end_if;
+
+// Reset diameter Data by input signal //////////////////////////////////////////////////
+
+if( (not(b_Run)) and (b_RstDia) )then
+	f_Dia_me := f_DiaSync;
+end_if;
+
+// P correct start timer ////////////////////////////////////////////////////////////////
+
+tmr_FOR_P.EnableIn := 1;
+tmr_FOR_P.PRE := 5000;
+tmr_FOR_P.Reset := not(b_Run);
+tmr_FOR_P.TimerEnable := b_Run;
+
+TONR(tmr_FOR_P);
+
+f_Dummy01 := tmr_FOR_P.ACC;
+f_P_StrtSec := f_Dummy01 /1000;
+
+// Calculate P COrrect Value ////////////////////////////////////////////////////////////
+
+f_Pcorrect_ns := f_DNCR_Kp * f_DNCR_Pstn_me /100;
+
+f_P_Crct_me := f_Pcorrect_ns * f_P_StrtSec /5;
+
+if (b_is_TU ) then f_P_Crct_me :=( f_P_Crct_me * -1) ; end_if;
+
+// Estimate Diameter with Integration calculating  //////////////////////////////////////
+
+f_incVforDIa := (((f_DiaMax2 - f_DiaMin2)/2) / (f_DNCR_Is/f_ScnT))//20191227 edit 
+                * (f_DNCR_Pstn_me /100) ;
+
+if (b_is_TU) then f_incVforDIa := (f_incVforDIa * -1); end_if;
+
+if (b_SpdOver)and(0 < f_incVforDIa) then f_incVforDIa := 0; end_if;
+
+if( (b_Run)and(b_I_Calc)and(0 < f_Line_Spd_me) )then
+	f_Dia_me := f_Dia_me - f_incVforDIa;
+	
+	if (f_Dia_me < f_DiaMin2 ) then
+		f_Dia_me := f_DiaMin2;
+	elsif (f_DiaMax2 < f_Dia_me ) then
+		f_Dia_me := f_DiaMax2;
+	end_if;
+
+end_if;
+
+//3456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+// Axis Speed Calculate /////////////////////////////////////////////////////////////////
+
+if (b_Run) then
+	f_AxisSpd_as :=( f_Line_Spd_me /(3.1415 * f_Dia_me /1000)) + f_P_Crct_me;
+else
+	f_AxisSpd_as := 0;
+end_if;
+
+// Limit Output Speed Reference /////////////////////////////////////////////////////////
+
+f_SpdMaxNeg := f_SpdMax * -1 ;
+b_SpdOver := 0;
+
+if( f_AxisSpd_as < f_SpdMaxNeg )then
+	f_AxisSpd_as := f_SpdMaxNeg;
+elsif( f_SpdMax < f_AxisSpd_as )then
+	f_AxisSpd_as := f_SpdMax;
+	b_SpdOver := 1;
+end_if;
+
+
+
+
+
+//3456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+/////////////////////////////////////////////////////////////////////////////////////////
+// P60_PO R10_PO Speed Reference ////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+
+// Reset Triger For Diameter Integration ////////////////////////////////////////////////
+// Pay-Off Bobbin Instal Signal is off.
+
+dancer_CNTRL[0].b_RstDia := not( M31_2ETH:1:I.Pt00.Data );
+dancer_CNTRL[1].b_RstDia := not( M31_2ETH:1:I.Pt01.Data );
+dancer_CNTRL[2].b_RstDia := not( M31_2ETH:1:I.Pt02.Data );
+dancer_CNTRL[3].b_RstDia := not( M31_2ETH:1:I.Pt03.Data );
+dancer_CNTRL[4].b_RstDia := not( M31_2ETH:1:I.Pt04.Data );
+dancer_CNTRL[5].b_RstDia := not( M31_2ETH:1:I.Pt05.Data );
+
+dancer_CNTRL[6].b_RstDia := not( M32_2ETH:1:I.Pt00.Data );
+dancer_CNTRL[7].b_RstDia := not( M32_2ETH:1:I.Pt01.Data );
+dancer_CNTRL[8].b_RstDia := not( M32_2ETH:1:I.Pt02.Data );
+dancer_CNTRL[9].b_RstDia := not( M32_2ETH:1:I.Pt03.Data );
+dancer_CNTRL[10].b_RstDia := not( M32_2ETH:1:I.Pt04.Data );
+dancer_CNTRL[11].b_RstDia := not( M32_2ETH:1:I.Pt05.Data );
+
+
+// Dancer Control Calculation With Loop ////////////////////////////////////////////////
+
+for nn_c1 := 0
+	To 11
+	by 1
+	do
+	
+	dancer_CNTRL[nn_c1].EnableIn := 1;
+
+	dancer_CNTRL[nn_c1].b_is_TU := GLIB_AX_PO.b_is_TU;
+	dancer_CNTRL[nn_c1].f_SpdMax := GLIB_AX_PO.f_Spd_Max;
+
+	dancer_CNTRL[nn_c1].f_DiaMax := GLIB_PO_BBN_TYPE.f_DiaMax;
+	dancer_CNTRL[nn_c1].f_DiaMin := GLIB_PO_BBN_TYPE.f_DiaMin;
+
+	dancer_CNTRL[nn_c1].f_DNCR_Is := GLIB_DNCR_GAIN_PO.f_I_Time;
+	dancer_CNTRL[nn_c1].f_DNCR_Kp := GLIB_DNCR_GAIN_PO.f_P;
+	if not( G_b_LineRunJogZero ) then
+		dancer_CNTRL[nn_c1].f_DNCR_Kp := 42;
+	end_if;	
+
+	dancer_CNTRL[nn_c1].b_I_Calc := ( 5 <= GCAP_f_Spd_as );
+	dancer_CNTRL[nn_c1].b_Run := GPO_b_RUN_Mb[nn_c1];
+	dancer_CNTRL[nn_c1].f_DNCR_Pstn_me := TPTO02_f_DncrPstn_PO_me[nn_c1];
+	dancer_CNTRL[nn_c1].f_Line_Spd_me := GCAP_f_Spd_as;
+
+// Exec Dancer Control Calcuration ///////////////////////////////////////////////////////
+
+	BBN_DNCR_Cntrl00(dancer_CNTRL[nn_c1]);
+
+// Get speed reference ///////////////////////////////////////////////////////////////////
+// Dancer disable program. 20200307 Oshida edited
+
+	GPO_f_DNCR_Spd_as[nn_c1]  	  := dancer_CNTRL[nn_c1].f_AxisSpd_as;       //comment out for testing
+	//GPO_f_DNCR_Spd_as[nn_c1]  	  := dancer_CNTRL[nn_c1].f_AxisSpd_as*(GLIB_PO_BBN_TYPE.f_DiaMin/dancer_CNTRL[nn_c1].f_Dia_me);  //comment out for normal run
+	TPTO02_f_PO_BBN_DIA_me[nn_c1] := dancer_CNTRL[nn_c1].f_Dia_me;
+	f_P_Correct_Value[nn_c1]      := dancer_CNTRL[nn_c1].f_P_Crct_me;	
+	
+end_for;
